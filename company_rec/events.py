@@ -19,7 +19,6 @@ class Event:
     nature: str
     state: str
     industry: str
-    valid_data: bool
 
 
 @dataclass(frozen=True)
@@ -81,7 +80,7 @@ def parse(raw: bytes | str, message_id: str | None = None) -> Parsed:
         return Parsed(None, f"unknown-type:{kind!s}", mid, reg=reg)
 
     data = obj.get("data")
-    if kind == "company-upserted" and data is not None and not isinstance(data, dict):
+    if kind == "company-upserted" and not isinstance(data, dict):
         return Parsed(None, "non-dict-data", mid, reg=reg, shell=True)
     data = data if isinstance(data, dict) else {}
 
@@ -95,7 +94,6 @@ def parse(raw: bytes | str, message_id: str | None = None) -> Parsed:
             nature=_text(data.get("natureOfBusiness")),
             state=_text(data.get("state")),
             industry=_text(data.get("industry")),
-            valid_data=isinstance(obj.get("data"), dict),
         ),
         reason=None,
         message_id=mid,

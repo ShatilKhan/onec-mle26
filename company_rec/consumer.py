@@ -72,7 +72,6 @@ async def handle(
                     nature="",
                     state="",
                     industry="",
-                    valid_data=False,
                 )
                 async with pg.acquire() as conn:
                     await upsert(conn, shell, None, None, False)

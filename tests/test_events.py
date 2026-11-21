@@ -22,6 +22,7 @@ def test_poison_reasons():
     assert parse('{"type":"x","registrationNumber":"SYN-1"}', "m").reason == "unknown-type:x"
     p = parse('{"type":"company-upserted","registrationNumber":"SYN-1","data":"x"}', "m")
     assert p.reason == "non-dict-data" and p.shell and p.reg == "SYN-1"
+    assert parse('{"type":"company-upserted","registrationNumber":"SYN-1","data":null}', "m").shell
 
 
 def test_timestamp_shapes():
