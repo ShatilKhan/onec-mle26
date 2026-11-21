@@ -1,5 +1,7 @@
 # MLE Take-Home: Company Recommendation System
 
+author's note: nothing code related just updating the readme with my human hands, the clock started at around 7:15 pm (UTC+6) and Now it's 1:14 AM (UTC+6) so stopped any further commits. I used Hy4 Flash Free from Opencode cause I blew my personal codex plus (with 3 resets) on another hackathon this week. Took some breaks in-between for food and stuff which I'm still counting part of the clock cause the other future scope items wouldn't be properly done even if I had 15-20 mins more. The sessions folder has all my agent sessions and those are also done from free models (claude , google) , didn't use those for coding since they wouldn't have enough limit. Cool challenge , learned a lot.
+
 ## Solution
 
 Consumer + similarity service built on the scaffold below. Python 3.14 via `uv`, Docker Engine + Compose,
