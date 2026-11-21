@@ -17,3 +17,15 @@ down:
 # Replay the registry feed onto the company-events queue.
 publish:
     uv run python -m producer.publish
+
+# Consume company-events into Postgres + pgvector.
+consumer:
+    uv run python -m company_rec.consumer
+
+# Serve the similarity API on localhost:8000.
+service:
+    uv run uvicorn company_rec.service:app --host 127.0.0.1 --port 8000
+
+# Run the test suite.
+test:
+    uv run python -m pytest -q

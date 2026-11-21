@@ -1,5 +1,33 @@
 # MLE Take-Home: Company Recommendation System
 
+## Running this solution
+
+Built on the scaffold below. Python 3.14 via `uv`, Docker Engine + `docker compose`, `just`. Pinned deps live in
+`uv.lock`. Consumer and service are host processes; only Postgres and RabbitMQ run in Docker.
+
+```bash
+just setup      # uv sync --locked
+just up         # Postgres + RabbitMQ
+just publish    # replay the 2,518-line feed
+just consumer   # consume into Postgres (Ctrl+C to stop)
+just service    # API at http://127.0.0.1:8000
+just test       # unit tests
+```
+
+Query: `curl 'http://127.0.0.1:8000/companies/SYN-001550/similar?limit=4&offset=0'`.
+Health: `curl http://127.0.0.1:8000/health`.
+
+Config (env, defaults shown): `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/companies`,
+`RABBITMQ_URL=amqp://guest:guest@localhost:5672/`, `QUEUE=company-events`, `DLX=company-events.dlx`,
+`DLQ=company-events.dlq`, `EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384-d,
+CPU, downloaded by `fastembed` on first run), `LIMIT_MAX=20`, `CANDIDATE_WINDOW=40`, `DLQ_BASELINE=22`,
+`INDUSTRY_BONUS=0.02`, `STATE_BONUS=0.01`, `LOG_LEVEL=INFO`.
+
+Poison messages go to `company-events.dlq`; expected depth after one full replay is 22. Consumer is
+idempotent — replaying the feed adds no rows. Decisions, assumptions and diagrams are in [`DESIGN.md`](DESIGN.md).
+Learning references and the session export live in [`sessions/`](sessions/sessions.md).
+
+
 Welcome to the **Machine Learning Engineer** take-home from the OneCredit Data & AI team. It's a simplified version of
 a system we run in production, where it powers company recommendations and lead generation.
 
