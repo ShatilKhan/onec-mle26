@@ -100,7 +100,7 @@ async def similar(
             "natureOfBusiness": row["nature_of_business"],
             "state": row["state"],
             "industry": row["industry"],
-            "score": round(raw, 6),
+            "score": min(1.0, round(raw, 6)),
         }
         for _, raw, row in page
     ]
