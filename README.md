@@ -31,11 +31,29 @@ just setup      # uv sync --locked
 just up         # Postgres + RabbitMQ, wait until healthy
 ```
 
-Config via env; defaults: `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/companies`,
-`RABBITMQ_URL=amqp://guest:guest@localhost:5672/`, `QUEUE=company-events`, `DLX=company-events.dlx`,
-`DLQ=company-events.dlq`, `EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
-(384-d, CPU, fetched by `fastembed` on first run), `LIMIT_MAX=20`, `CANDIDATE_WINDOW=40`, `DLQ_BASELINE=25`,
-`INDUSTRY_BONUS=0.02`, `STATE_BONUS=0.01`, `LOG_LEVEL=INFO`.
+#### Configuration
+
+All settings come from environment variables; the defaults below work with the Docker Compose services.
+Nothing needs changing for a local run.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/companies` | pgvector connection |
+| `RABBITMQ_URL` | `amqp://guest:guest@localhost:5672/` | AMQP connection |
+| `QUEUE` | `company-events` | input queue (owned by the registry producer) |
+| `DLX` | `company-events.dlx` | direct exchange we declare for poison |
+| `DLQ` | `company-events.dlq` | poison queue; depth checked by `just dlq-check` |
+| `EMBED_MODEL` | `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` | 384-d CPU model, fetched by `fastembed` on first run |
+| `LIMIT_MAX` | `20` | maximum page size |
+| `CANDIDATE_WINDOW` | `40` | candidates fetched before paging / soft bonus |
+| `DLQ_BASELINE` | `25` | expected poison depth after one full replay |
+| `INDUSTRY_BONUS` | `0.02` | ranking bonus for same industry |
+| `STATE_BONUS` | `0.01` | ranking bonus for same state |
+| `LOG_LEVEL` | `INFO` | consumer log level |
+
+If host ports were overridden for Compose, set `DATABASE_URL` and `RABBITMQ_URL` to match. Changing
+`EMBED_MODEL` to a model with different dimensionality requires a `vector(...)` column migration and
+re-embedding — see [`DESIGN.md`](DESIGN.md).
 
 ### Running
 
