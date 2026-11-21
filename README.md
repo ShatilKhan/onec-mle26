@@ -96,6 +96,8 @@ is left as future scope because a GitHub-hosted runner cannot reach local Docker
 
 ### Findings and results
 
+Verified locally on Docker Engine 29.9.3, Postgres 16 + pgvector 0.8.7, RabbitMQ 3.13.7, Python 3.14.10:
+
 - Feed is dirty by design: 5 malformed JSON, 10 unusable registration numbers, 6 `null` lines, 9 non-dict
   `data` values; 25 distinct poison IDs → DLQ baseline 25.
 - Feed is out of order (`SYN-000155` has a 22:03 event before 15:39). Latest-wins by normalized source
@@ -109,8 +111,14 @@ is left as future scope because a GitHub-hosted runner cannot reach local Docker
   cross-state/cross-industry. A small same-industry/state bonus is used over a top-40 candidate window.
 - Local run: API returned sensible neighbours, page 2 returned different rows, 404 for unknown registration,
   422 for `limit + offset > 40`. `just test`: 5 passed. `just dlq-check`: depth 25 OK.
+- Local counts after one clean replay: 2,518 messages published → 2,022 companies, 2,014 active/embedded,
+  39 surrogate vectors, 8 struck-off, 2,450 processed messages, DLQ depth 25, input queue 0.
+- Query for `SYN-001550` returned `SYN-000539` first, then `SYN-000263` and `SYN-001650` — all cafés /
+  coffee shops, cross-state as in the portal mock. Reported score clamped to `1.0`.
+- Replaying the feed a second time added 0 rows, 0 processed messages, 0 DLQ messages — idempotency verified.
 - Learning references and the session transcript: [`sessions/`](sessions/sessions.md).
 
+---
 
 Welcome to the **Machine Learning Engineer** take-home from the OneCredit Data & AI team. It's a simplified version of
 a system we run in production, where it powers company recommendations and lead generation.
