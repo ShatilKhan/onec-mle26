@@ -32,7 +32,7 @@ class Settings:
             model=os.environ.get("EMBED_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
             limit_max=int(os.environ.get("LIMIT_MAX", "20")),
             candidate_window=int(os.environ.get("CANDIDATE_WINDOW", "40")),
-            dlq_baseline=int(os.environ.get("DLQ_BASELINE", "22")),
+            dlq_baseline=int(os.environ.get("DLQ_BASELINE", "25")),
             industry_bonus=float(os.environ.get("INDUSTRY_BONUS", "0.02")),
             state_bonus=float(os.environ.get("STATE_BONUS", "0.01")),
         )

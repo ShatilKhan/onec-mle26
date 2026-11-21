@@ -20,10 +20,10 @@ Health: `curl http://127.0.0.1:8000/health`.
 Config (env, defaults shown): `DATABASE_URL=postgresql://postgres:postgres@localhost:5432/companies`,
 `RABBITMQ_URL=amqp://guest:guest@localhost:5672/`, `QUEUE=company-events`, `DLX=company-events.dlx`,
 `DLQ=company-events.dlq`, `EMBED_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384-d,
-CPU, downloaded by `fastembed` on first run), `LIMIT_MAX=20`, `CANDIDATE_WINDOW=40`, `DLQ_BASELINE=22`,
+CPU, downloaded by `fastembed` on first run), `LIMIT_MAX=20`, `CANDIDATE_WINDOW=40`, `DLQ_BASELINE=25`,
 `INDUSTRY_BONUS=0.02`, `STATE_BONUS=0.01`, `LOG_LEVEL=INFO`.
 
-Poison messages go to `company-events.dlq`; expected depth after one full replay is 22. Consumer is
+Poison messages go to `company-events.dlq`; expected depth after one full replay is 25. Consumer is
 idempotent — replaying the feed adds no rows. Decisions, assumptions and diagrams are in [`DESIGN.md`](DESIGN.md).
 Learning references and the session export live in [`sessions/`](sessions/sessions.md).
 

@@ -127,7 +127,8 @@ erDiagram
 Event types: 2,499 `company-upserted`, 8 `company-struck-off` (no `data`).
 2,052 distinct registration numbers; 363 appear more than once (max 7 events). Feed is **not** ordered by time:
 `SYN-000155` has a 22:03 event before a 15:39 event. `updatedAt` is 2,470 ISO strings, 30 int epoch-ms, 7 missing.
-7 events lack `registrationNumber`; 17 have empty `data`; 14 have only `companyName`; 9 have non-dict `data`.
+10 events lack a usable string `registrationNumber` (7 missing, 3 numeric); 17 have empty `data`; 14 have
+only `companyName`; 9 have non-dict `data`.
 Nulls: industry 151, state 91, natureOfBusiness 60. Extra keys `source` (38), `ingestedBy` (37).
 State casing varies (`selangor`, `SELANGOR`, `KUALA LUMPUR`).
 Descriptions: ~1,576 English, ~666 Malay, ~190 mixed. This drives the model choice.
@@ -144,9 +145,10 @@ then `ack` source. No requeue loop (`nack(requeue=True)` would redeliver forever
 DLQ dedup reuses `processed_messages` from D3 — a poison message already recorded is not republished, so a
 crash between DLQ publish and source ack cannot create duplicate DLQ entries. Depth check: poll RabbitMQ
 management API (`GET /api/queues/%2f/company-events.dlq`, port 15672) and alert when depth exceeds the fixed
-baseline of **22** or grows between checks; also visible in the management UI. Baseline 22 = 5 malformed JSON
-+ 7 missing registration number + 6 `null` lines collapsed to 1 by shared `message_id` (`sha256("null")`)
-+ 9 upserts with non-dict `data`, all with distinct IDs — 22 distinct poison IDs from the seed feed. Fixed,
+baseline of **25** or grows between checks; also visible in the management UI. Baseline 25 = 5 malformed JSON
++ 10 missing registration number (7 null + 3 numeric — `registrationNumber` must be a non-empty string)
++ 6 `null` lines collapsed to 1 by shared `message_id` (`sha256("null")`)
++ 9 upserts with non-dict `data` (`null` or string), distinct IDs — 25 distinct poison IDs from the seed feed. Fixed,
 not DB-derived — simpler; recompute only if the feed or `message_id` derivation changes. Valid messages are acked only after DB commit, so at-least-once delivery is
 preserved. Counts logged at shutdown for the DESIGN data-quality note.
 
@@ -223,7 +225,7 @@ If absent, still store the company ("no lost companies") and embed surrogate `"{
 from whatever fields are present, flag `embedding_surrogate=true`. Such rows are recommendable but lower
 quality; excluded from the quality-eval set. Assumption: an upsert with non-dict `data` (`null` or a string,
 9 events in the feed) is a malformed update, not a legitimate field wipe — treated as poison (D1), logged +
-DLQ'd, and **not** applied to an existing row. DLQ baseline rises from 13 to 22 distinct IDs.
+DLQ'd, and **not** applied to an existing row. Measured DLQ baseline = 25 distinct IDs.
 For a first-ever malformed upsert, write a **shell row**: reg, placeholder `company_name`, `active=true`,
 `embedding NULL`, `updated_at` = 1970 sentinel, `message_id` processed. Sentinel (not the event's timestamp)
 lets any later dated valid event win under D2; otherwise a valid event older than the malformed one would be
