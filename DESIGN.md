@@ -1,6 +1,6 @@
 # DESIGN — Company Recommendation System
 
-Status: design approved for implementation. Assessment `2026.11` (`mle-v2026.11`).
+Status: implemented and verified locally. Assessment `2026.11` (`mle-v2026.11`).
 Time: owner controls stop; no fixed clock cutoff. Session start `2026-11-21T19:06:03+06:00` recorded for the log.
 At stop, freeze work. Anything incomplete moves to "Future scope" below — no further edits.
 
@@ -229,9 +229,9 @@ lets any later dated valid event win under D2; otherwise a valid event older tha
 blocked forever. No overlap in this feed between the 9 malformed-data events and the 7 timestamp-less events,
 so shell-vs-untimestamped tie is theoretical — no `incomplete` flag needed.
 If all surrogate fields are empty, leave `embedding NULL` (do not embed `""` or a bare reg) — row stays
-queryable for cards, excluded from recommendations by D8's `embedding IS NOT NULL` filter. After D2 latest-wins:
-46 companies lack a usable description → 39 surrogate vectors + 7 shells (the shell cases previously showed
-as empty surrogates).
+queryable for cards, excluded from recommendations by D8's `embedding IS NOT NULL` filter. Verified locally:
+2,022 total rows, 2,014 active/embedded, 39 surrogate vectors, 8 struck-off, DLQ depth 25. The 7 empty-surrogate
+cases never occur because their malformed updates are now poison and the earlier valid descriptions survive.
 
 **D7 — Schema.**
 
