@@ -1,0 +1,836 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Embeddings, pgvector and RabbitMQ for beginners</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F1F3EF; --surface:#FFFFFF; --ink:#1D2A2E; --muted:#56666A; --line:#D3D9D4; --soft:#E6EAE5;
+  --emb:#1F7A74; --pg:#3C5A9A; --mq:#A86A12; --warn:#A43D3D; --ok:#2F7D3B; --neg:#8A3F72;
+  color-scheme:light; box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#141B1D; --surface:#1C2528; --ink:#E6ECE8; --muted:#9AA8A6; --line:#2E3A3D; --soft:#232D30;
+  --emb:#4FB3A9; --pg:#8AA4E6; --mq:#E3A64B; --warn:#E07A7A; --ok:#6CC27A; --neg:#C27AAE; color-scheme:dark;}}
+:root[data-theme="dark"]{
+  --bg:#141B1D; --surface:#1C2528; --ink:#E6ECE8; --muted:#9AA8A6; --line:#2E3A3D; --soft:#232D30;
+  --emb:#4FB3A9; --pg:#8AA4E6; --mq:#E3A64B; --warn:#E07A7A; --ok:#6CC27A; --neg:#C27AAE; color-scheme:dark;}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Schibsted Grotesk",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:17px;line-height:1.55}
+main{max-width:1080px;margin:0 auto;padding:48px 22px 96px}
+h1{font-size:clamp(2.2rem,6vw,3.8rem);line-height:1.03;letter-spacing:-0.03em;font-weight:800;margin:0 0 16px;max-width:16ch}
+h2{font-size:clamp(1.6rem,3.4vw,2.2rem);letter-spacing:-0.02em;line-height:1.1;margin:0 0 14px;font-weight:800;display:flex;align-items:center;gap:12px}
+h2 .sw{width:14px;height:14px;border-radius:3px;flex:none}
+h3{font-size:1.15rem;margin:34px 0 8px;font-weight:600}
+p{margin:0 0 12px;max-width:64ch}
+.lede{font-size:1.2rem;color:var(--muted);max-width:54ch}
+section{margin-top:80px;padding-left:22px;border-left:3px solid var(--c,var(--line))}
+.wide{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px}
+svg text{font-family:"Schibsted Grotesk",system-ui,sans-serif}
+code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace}
+pre{background:var(--soft);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.6;overflow-x:auto;margin:0 0 14px;white-space:pre}
+code{font-size:.88em;background:var(--soft);padding:1px 5px;border-radius:4px}
+pre code{background:none;padding:0;font-size:inherit}
+button{font:inherit;cursor:pointer}
+.btn{background:var(--ink);color:var(--bg);border:0;border-radius:999px;padding:9px 18px;font-weight:600;font-size:15px}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.chip{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:999px;padding:6px 13px;font-size:14px}
+.chip[aria-pressed="true"]{background:var(--c,var(--ink));border-color:var(--c,var(--ink));color:var(--surface)}
+button:focus-visible,summary:focus-visible{outline:3px solid var(--emb);outline-offset:2px}
+button:disabled{opacity:.45;cursor:default}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.small{font-size:14px;color:var(--muted)}
+.label{font-size:13px;color:var(--muted);margin:0 4px 0 0}
+.grid2{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:20px;align-items:start}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:820px){.grid2,.grid3{grid-template-columns:1fr}section{padding-left:14px}}
+
+/* definitions */
+.def{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface);margin:8px 0 22px}
+.def>div{padding:16px 18px}
+.def>div+div{border-left:1px solid var(--line)}
+@media (max-width:700px){.def{grid-template-columns:1fr}.def>div+div{border-left:0;border-top:1px solid var(--line)}}
+.def h4{margin:0 0 6px;font-size:13px;font-weight:600;color:var(--muted)}
+.def blockquote{margin:0;font-size:1.15rem;font-weight:600;line-height:1.35}
+.def cite{display:block;font-style:normal;font-size:13px;margin-top:8px}
+.def cite a{color:var(--muted)}
+.def p{margin:0 0 6px}
+
+/* hero cards */
+.role{padding:16px;border-radius:14px;background:var(--surface);border:1px solid var(--line);border-top:5px solid var(--c);text-decoration:none;color:inherit;display:block}
+.role b{display:block;font-size:1.15rem;margin-bottom:4px}
+.role span{font-size:15px;color:var(--muted)}
+
+/* vectors */
+.vec{display:grid;grid-template-columns:repeat(32,1fr);gap:2px}
+.vec span{aspect-ratio:1/2.2;border-radius:2px;transition:opacity .25s}
+.vecrow{display:grid;grid-template-columns:150px minmax(0,1fr) 70px;gap:12px;align-items:center;margin:8px 0}
+@media (max-width:560px){.vecrow{grid-template-columns:1fr}}
+.vecrow .num{font-family:"JetBrains Mono",monospace;font-size:13px;text-align:right}
+
+/* flow */
+.flow{display:grid;grid-template-columns:minmax(0,1fr) auto 120px auto minmax(0,1.3fr);gap:12px;align-items:center}
+@media (max-width:700px){.flow{grid-template-columns:1fr}.flow .arrow{transform:rotate(90deg);justify-self:center}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;font-size:15px}
+.modelbox{background:var(--emb);color:var(--surface);border-radius:12px;padding:16px 10px;text-align:center;font-weight:600;font-size:14px;line-height:1.25}
+.modelbox.busy{animation:pulse .6s ease-in-out 2}
+@keyframes pulse{50%{transform:scale(1.06)}}
+.arrow{font-size:22px;color:var(--muted)}
+
+/* search compare */
+.qlist{list-style:none;margin:0;padding:0}
+.qlist li{display:grid;grid-template-columns:minmax(0,1fr) 120px;gap:10px;align-items:center;padding:7px 10px;border-radius:8px;font-size:15px;transition:opacity .3s,background .3s}
+.qlist li.dim{opacity:.35}
+.qlist li.hit{background:color-mix(in srgb,var(--emb) 14%,transparent)}
+.bar{height:10px;border-radius:5px;background:var(--emb);transition:width .5s}
+.bartrack{background:var(--soft);border-radius:5px;height:10px;overflow:hidden}
+mark{background:color-mix(in srgb,var(--mq) 35%,transparent);color:inherit;border-radius:3px;padding:0 2px}
+.verdict{font-weight:600;margin:12px 0 0}
+
+/* pg table */
+.pgt{position:relative}
+.pgrow{position:absolute;left:0;right:0;height:44px;display:grid;grid-template-columns:38px minmax(0,1fr) 120px 110px;gap:10px;align-items:center;padding:0 10px;border-bottom:1px solid var(--line);transition:top .7s cubic-bezier(.4,.0,.2,1),background .3s;font-size:14px}
+.pgrow.top3{background:color-mix(in srgb,var(--pg) 14%,transparent)}
+.pghead{display:grid;grid-template-columns:38px minmax(0,1fr) 120px 110px;gap:10px;padding:6px 10px;font-size:13px;color:var(--muted);font-weight:600;border-bottom:2px solid var(--line)}
+.pgrow .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mini{display:grid;grid-template-columns:repeat(12,1fr);gap:1px}
+.mini span{height:16px;border-radius:1px}
+@media (max-width:620px){.pgrow,.pghead{grid-template-columns:30px minmax(0,1fr) 90px}.pgrow .m,.pghead .m{display:none}}
+
+/* wait bars */
+.wait{display:grid;grid-template-columns:80px minmax(0,1fr) 110px;gap:8px;align-items:center;margin:6px 0;font-size:14px}
+.wait .bartrack{height:16px;border-radius:4px}
+.wait .bar{height:16px;border-radius:4px;width:0}
+.qcount{display:flex;gap:4px;min-height:26px;align-items:center;flex-wrap:wrap}
+.msg{display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:26px;padding:0 8px;border-radius:6px;background:var(--mq);color:var(--surface);font-size:13px;font-weight:600;font-family:"JetBrains Mono",monospace;transition:all .3s}
+.msg.unacked{background:transparent;color:var(--mq);border:2px dashed var(--mq)}
+.msg.re::after{content:" ↺";}
+
+/* ack */
+.ackgrid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) minmax(0,1fr);gap:14px}
+@media (max-width:700px){.ackgrid{grid-template-columns:1fr}}
+.zone{border:1px dashed var(--line);border-radius:12px;padding:12px;min-height:96px}
+.zone h4{margin:0 0 8px;font-size:13px;color:var(--muted);font-weight:600}
+
+/* steps */
+.steps{list-style:none;padding:0;margin:18px 0 0;display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;counter-reset:s}
+.steps li{counter-increment:s}
+.steps button{width:100%;text-align:left;background:transparent;border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--muted);font-size:14px;line-height:1.35;height:100%}
+.steps button::before{content:counter(s);display:block;font-weight:800;font-size:1.3rem;color:var(--line);margin-bottom:2px}
+.steps button.on{border-color:var(--ink);color:var(--ink);background:var(--surface)}
+.steps button.on::before{color:var(--ink)}
+.caption{min-height:3.2em;margin:14px 0 0}
+.whatif{margin-top:10px;padding:14px 16px;border-radius:10px;background:var(--soft);min-height:4em}
+
+/* glossary */
+table{border-collapse:collapse;width:100%;font-size:15px}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:600;color:var(--muted);font-size:13px}
+td:first-child{font-weight:600;white-space:nowrap}
+.tag{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:8px;vertical-align:1px}
+details{border:1px solid var(--line);border-radius:14px;background:var(--surface);padding:0 18px}
+summary{cursor:pointer;padding:16px 0;font-weight:600}
+#codebox{max-height:520px;overflow:auto}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>How a computer finds questions with the same meaning</h1>
+  <p class="lede">This page explains three tools. Each tool does one job. All the examples use one service: a bank of math practice questions for teachers.</p>
+  <div class="grid3" style="margin-top:26px">
+    <a class="role" href="#embeddings" style="--c:var(--emb)"><b>Embedding model</b><span>Changes a text into a list of numbers. The numbers show the meaning.</span></a>
+    <a class="role" href="#pgvector" style="--c:var(--pg)"><b>pgvector</b><span>Keeps the lists of numbers in Postgres. Finds the lists that are nearest.</span></a>
+    <a class="role" href="#rabbitmq" style="--c:var(--mq)"><b>RabbitMQ</b><span>Keeps jobs in a line. Gives each job to a worker program.</span></a>
+  </div>
+</header>
+
+<!-- PROBLEM -->
+<section style="--c:var(--ink)" id="problem">
+  <h2><span class="sw" style="background:var(--ink)"></span>The problem</h2>
+  <p>A teacher types a search. The question bank has good matches. But the matches do not use the same words.</p>
+  <div class="panel" style="margin-top:14px">
+    <div class="row" style="--c:var(--ink)"><span class="label">Teacher types</span><span id="pq" class="row"></span></div>
+    <div class="row" style="margin-top:10px;--c:var(--emb)"><span class="label">Search by</span><span id="pm" class="row"></span></div>
+    <ul class="qlist" id="plist" style="margin-top:14px"></ul>
+    <p class="verdict" id="pverdict"></p>
+  </div>
+  <p style="margin-top:14px">Search by words looks for the same letters. Search by meaning needs two things: an embedding model and a place to compare the numbers. The next sections show both.</p>
+</section>
+
+<!-- EMBEDDINGS -->
+<section style="--c:var(--emb)" id="embeddings">
+  <h2><span class="sw" style="background:var(--emb)"></span>Embedding model</h2>
+  <div class="def">
+    <div><h4>Official definition (embedding)</h4>
+      <blockquote>“An embedding is a vector (list) of floating point numbers.”</blockquote>
+      <cite><a href="https://developers.openai.com/api/docs/guides/embeddings" target="_blank" rel="noopener">OpenAI, Vector embeddings guide</a></cite></div>
+    <div><h4>In simple words</h4>
+      <p>An <b>embedding model</b> is a program. It reads a text and gives a list of numbers.</p>
+      <p>The list is the <b>embedding</b>. Texts with the same meaning get similar lists.</p></div>
+  </div>
+
+  <h3>Step 1: A text goes in, numbers come out</h3>
+  <div class="row" id="echips" style="--c:var(--emb)"></div>
+  <div class="panel flow" style="margin-top:12px">
+    <div class="card" id="etext"></div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div class="modelbox" id="emodel">Embedding model<br><span style="font-weight:400;font-size:12px">text-embedding-3-small</span></div>
+    <div class="arrow" aria-hidden="true">→</div>
+    <div><div class="vec" id="evec" aria-hidden="true"></div><p class="small mono" id="enums" style="margin:6px 0 0"></p></div>
+  </div>
+  <p class="small" style="margin-top:8px">The model gives 1,536 numbers for each text. This page shows the first 32 as colors. Green is a positive number. Purple is a negative number.</p>
+
+  <h3>Step 2: Compare the lists</h3>
+  <div class="panel" id="ecompare"></div>
+
+  <h3>Step 3: See the numbers as points on a map</h3>
+  <p>Real embeddings have 1,536 directions. This map shows only 2, so you can see it. Click a question, or click an empty area.</p>
+  <div class="grid2">
+    <div class="panel" style="padding:8px"><svg id="map" viewBox="0 0 600 400" style="width:100%;display:block" role="img" aria-label="Map of math questions. Questions with the same topic are near each other."></svg></div>
+    <div>
+      <p class="label">Selected</p>
+      <p id="msel" style="font-weight:600;font-size:1.05rem"></p>
+      <p class="label" style="margin-top:12px">Nearest 3 (shorter bar = more similar)</p>
+      <div id="mnear"></div>
+    </div>
+  </div>
+  <div class="grid3" style="margin-top:18px">
+    <div class="card"><b>Small distance</b><br><span class="small">Similar meaning.</span></div>
+    <div class="card"><b>Large distance</b><br><span class="small">Different meaning.</span></div>
+    <div class="card"><b>One model only</b><br><span class="small">Make all embeddings with the same model. Lists from two models do not compare.</span></div>
+  </div>
+</section>
+
+<!-- PGVECTOR -->
+<section style="--c:var(--pg)" id="pgvector">
+  <h2><span class="sw" style="background:var(--pg)"></span>pgvector</h2>
+  <div class="def">
+    <div><h4>Official definition</h4>
+      <blockquote>“Open-source vector similarity search for Postgres.”</blockquote>
+      <cite><a href="https://github.com/pgvector/pgvector" target="_blank" rel="noopener">pgvector README, GitHub</a></cite></div>
+    <div><h4>In simple words</h4>
+      <p><b>Postgres</b> is a database. It keeps data in tables.</p>
+      <p><b>pgvector</b> is an extension for Postgres. It adds a <b>vector</b> column. It also finds the rows with the nearest vectors.</p></div>
+  </div>
+
+  <h3>The questions table</h3>
+  <p>Each row is one question. The <code>embedding</code> column keeps the 1,536 numbers. Click a search to sort the rows by meaning.</p>
+  <div class="row" id="pgq" style="--c:var(--pg);margin-bottom:12px"></div>
+  <div class="panel" style="padding:0;overflow:hidden">
+    <div class="pghead"><span>id</span><span>text</span><span class="m">embedding</span><span>distance</span></div>
+    <div class="pgt" id="pgt"></div>
+  </div>
+  <pre id="pgsql" style="margin-top:14px"></pre>
+  <p class="small"><code>&lt;=&gt;</code> is the pgvector operator for <b>cosine distance</b>. It means “the distance between these two vectors”.</p>
+
+  <h3>Why an index makes search fast</h3>
+  <p>Without an index, Postgres compares the search with every row. An <b>HNSW index</b> connects near vectors like a map of roads. The search follows the roads and compares only a few rows.</p>
+  <div class="panel">
+    <div class="wide"><svg id="idx" viewBox="0 0 640 300" style="min-width:520px;width:100%;display:block" role="img" aria-label="Left: compare all 100 rows. Right: HNSW index compares about 20 rows."></svg></div>
+    <div class="row" style="margin-top:8px"><button class="btn" id="idxgo">Run both searches</button></div>
+  </div>
+  <p class="small" style="margin-top:8px">The HNSW search is approximate. It is very fast, but it can miss a match on some searches.</p>
+</section>
+
+<!-- RABBITMQ -->
+<section style="--c:var(--mq)" id="rabbitmq">
+  <h2><span class="sw" style="background:var(--mq)"></span>RabbitMQ</h2>
+  <div class="def">
+    <div><h4>Official definition</h4>
+      <blockquote>RabbitMQ is “a reliable and mature messaging and streaming broker.”</blockquote>
+      <cite><a href="https://www.rabbitmq.com/" target="_blank" rel="noopener">rabbitmq.com</a></cite></div>
+    <div><h4>In simple words</h4>
+      <p>A <b>message broker</b> is a program between other programs.</p>
+      <p>One program sends a <b>message</b>. The broker keeps it in a <b>queue</b>. A worker program takes it when it is ready.</p></div>
+  </div>
+
+  <h3>Why the question bank needs a queue</h3>
+  <p>The embedding model needs about 1 second for each question. It also has a limit on requests. Five teachers click Save at the same time.</p>
+  <div class="row" style="margin-bottom:10px"><button class="btn" id="waitgo">5 teachers click Save</button></div>
+  <div class="grid2" style="grid-template-columns:1fr 1fr">
+    <div class="panel"><b>Without a queue</b><p class="small" style="margin:2px 0 10px">The API calls the model. Each teacher waits.</p><div id="wNo"></div></div>
+    <div class="panel"><b>With RabbitMQ</b><p class="small" style="margin:2px 0 10px">The API puts a message in the queue and replies.</p><div id="wYes"></div>
+      <p class="small" style="margin:12px 0 4px">Queue <span class="mono">embed-questions</span></p><div class="qcount" id="wq"></div></div>
+  </div>
+
+  <h3>The parts of RabbitMQ</h3>
+  <p>The API never puts a message directly into a queue. It sends the message to an <b>exchange</b> with a <b>routing key</b>. The exchange compares the key with each <b>binding</b>. It copies the message into each queue that matches.</p>
+  <div class="panel">
+    <div class="row" style="--c:var(--mq)"><span class="label">Send a message with the key</span><span id="keys" class="row"></span></div>
+    <div class="wide"><svg id="mq" viewBox="0 0 800 260" style="min-width:600px;width:100%;display:block;margin-top:8px" role="img" aria-label="The API sends a message to an exchange. The exchange copies it to queues with matching bindings."></svg></div>
+    <p class="caption" id="mqcap"></p>
+    <div class="row" style="--c:var(--mq)"><span class="label">Other exchange types</span><span id="types" class="row"></span></div>
+    <p class="small" id="typecap" style="margin:8px 0 0"></p>
+  </div>
+
+  <h3>How RabbitMQ makes sure no job is lost</h3>
+  <p>The worker gets a message. RabbitMQ keeps a copy until the worker sends an <b>acknowledgement</b> (ack). If the worker stops first, the message goes back into the queue.</p>
+  <div class="panel">
+    <div class="ackgrid">
+      <div class="zone"><h4>Queue</h4><div class="qcount" id="aq"></div></div>
+      <div class="zone"><h4>Worker</h4><div class="qcount" id="aw"></div></div>
+      <div class="zone"><h4>Done (deleted)</h4><div class="qcount" id="ad"></div></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button class="btn" id="adel">Give a message to the worker</button>
+      <button class="btn ghost" id="aack">Worker finishes: send ack</button>
+      <button class="btn ghost" id="acr">Worker stops before ack</button>
+      <button class="btn ghost" id="arst">Start again</button>
+    </div>
+    <p class="caption" id="acap"></p>
+  </div>
+</section>
+
+<!-- FULL PICTURE -->
+<section style="--c:var(--ink)" id="together">
+  <h2><span class="sw" style="background:linear-gradient(90deg,var(--mq) 33%,var(--emb) 33% 66%,var(--pg) 66%)"></span>All three together</h2>
+  <p>This is the full path of one question, from Save to search.</p>
+  <div class="panel">
+    <div class="wide"><svg id="pipe" viewBox="0 0 900 230" style="min-width:640px;width:100%;display:block" role="img" aria-label="The app sends a message to the RabbitMQ exchange and queue. A worker calls the embedding model and writes the vector to Postgres with pgvector."></svg></div>
+    <div class="row" style="margin-top:10px"><button class="btn" id="play">Play</button><span class="small">or click a step</span></div>
+    <ol class="steps" id="steps"></ol>
+    <p class="caption" id="cap"></p>
+    <pre id="capdata" style="margin:8px 0 0"></pre>
+  </div>
+
+  <h3>If something goes wrong</h3>
+  <div class="row" id="whatifs" style="--c:var(--ink)"></div>
+  <div class="whatif" id="whatif" aria-live="polite"></div>
+</section>
+
+<!-- GLOSSARY -->
+<section style="--c:var(--line)" id="glossary">
+  <h2><span class="sw" style="background:var(--muted)"></span>Words on this page</h2>
+  <div class="wide"><table>
+    <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+    <tbody id="gloss"></tbody>
+  </table></div>
+</section>
+
+<!-- DEVELOPERS -->
+<section style="--c:var(--line)" id="code">
+  <h2><span class="sw" style="background:var(--muted)"></span>For developers</h2>
+  <p>The code below runs the question bank on your computer. It uses Node.js, <code>amqplib</code>, <code>pg</code>, <code>pgvector</code> and the OpenAI SDK.</p>
+  <details>
+    <summary>Show the code (5 files)</summary>
+    <div class="row" id="codetabs" style="--c:var(--ink);margin-bottom:10px"></div>
+    <pre id="codebox"><code></code></pre>
+    <p class="small" id="codenote"></p>
+    <div class="row" style="margin-bottom:14px"><button class="btn ghost" id="copy" style="padding:6px 13px;font-size:14px">Copy file</button></div>
+    <p style="font-weight:600;margin-top:10px">Run it</p>
+    <pre><code>docker compose up -d
+psql postgres://postgres:dev@localhost:5432/postgres -f schema.sql
+
+npm init -y &amp;&amp; npm pkg set type=module
+npm i amqplib pg pgvector openai express
+
+export DATABASE_URL=postgres://postgres:dev@localhost:5432/postgres
+export OPENAI_API_KEY=sk-...
+node worker.js &amp;
+node api.js
+
+curl -X POST localhost:3000/questions -H 'content-type: application/json' \
+  -d '{"text":"Solve for x: 3x + 5 = 20","grade":7}'
+curl 'localhost:3000/search?q=equation%20word%20problems&amp;grade=7'</code></pre>
+    <p class="small" style="margin-bottom:18px">Open <code>http://localhost:15672</code> (user guest, password guest) to see the queues in the RabbitMQ management UI.</p>
+  </details>
+  <p class="small" style="margin-top:22px">Text on this page follows ASD-STE100 writing rules: short sentences, active voice, and one word for one meaning. Distances on this page are examples, not real model output.</p>
+</section>
+
+<script type="text/plain" id="f-compose">services:
+  rabbitmq:
+    image: rabbitmq:4-management
+    ports: ["5672:5672", "15672:15672"]   # 15672 = management UI
+
+  postgres:
+    image: pgvector/pgvector:pg17       # Postgres with pgvector installed
+    environment:
+      POSTGRES_PASSWORD: dev
+    ports: ["5432:5432"]</script>
+<script type="text/plain" id="f-schema">CREATE EXTENSION IF NOT EXISTS vector;
+
+CREATE TABLE questions (
+  id         bigserial PRIMARY KEY,
+  text       text NOT NULL,
+  grade      int  NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  embedding  vector(1536)        -- NULL until the worker writes it
+);
+
+CREATE INDEX questions_embedding_idx
+  ON questions USING hnsw (embedding vector_cosine_ops);
+
+-- pgvector 0.8+: continue the index scan when a WHERE filter
+-- (like grade = 7) removes most of the nearest rows
+SET hnsw.iterative_scan = relaxed_order;</script>
+<script type="text/plain" id="f-rabbit">// rabbit.js: declares the exchanges and queues in one place
+import amqp from "amqplib";
+
+export async function connect() {
+  const conn = await amqp.connect(process.env.AMQP_URL ?? "amqp://localhost");
+  const ch = await conn.createConfirmChannel();   // broker confirms each publish
+
+  await ch.assertExchange("questions", "topic", { durable: true });
+  await ch.assertExchange("questions.retry", "fanout", { durable: true });
+
+  // Main work queue. Rejected messages go to the retry exchange.
+  await ch.assertQueue("embed-questions", {
+    durable: true,
+    arguments: {
+      "x-queue-type": "quorum",
+      "x-dead-letter-exchange": "questions.retry",
+    },
+  });
+  await ch.bindQueue("embed-questions", "questions", "question.created");
+
+  // Retry queue: no consumer. After 30 s each message expires and
+  // goes back to "questions" with its original routing key.
+  await ch.assertQueue("embed-questions.retry", {
+    durable: true,
+    arguments: {
+      "x-message-ttl": 30000,
+      "x-dead-letter-exchange": "questions",
+    },
+  });
+  await ch.bindQueue("embed-questions.retry", "questions.retry", "");
+
+  // Messages that fail too many times wait here for a person.
+  await ch.assertQueue("embed-questions.parked", { durable: true });
+
+  return { conn, ch };
+}</script>
+<script type="text/plain" id="f-api">// api.js: saves questions, sends jobs, answers searches
+import express from "express";
+import pg from "pg";
+import pgvector from "pgvector/pg";
+import OpenAI from "openai";
+import { connect } from "./rabbit.js";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+pool.on("connect", async (client) => { await pgvector.registerTypes(client); });
+const openai = new OpenAI();              // reads OPENAI_API_KEY
+const { ch } = await connect();
+const app = express().use(express.json());
+
+// 1. Save the question. Ask a worker to embed it later.
+app.post("/questions", async (req, res) => {
+  const { text, grade } = req.body;
+  const { rows } = await pool.query(
+    "INSERT INTO questions (text, grade) VALUES ($1, $2) RETURNING id",
+    [text, grade]
+  );
+  const id = rows[0].id;
+
+  ch.publish("questions", "question.created",
+    Buffer.from(JSON.stringify({ questionId: id })),
+    { persistent: true, contentType: "application/json" });
+  await ch.waitForConfirms();             // RabbitMQ has the message
+
+  res.status(201).json({ id, status: "indexing" });
+});
+
+// 2. Search by meaning. Embed the search with the SAME model.
+app.get("/search", async (req, res) => {
+  const { data } = await openai.embeddings.create({
+    model: "text-embedding-3-small",
+    input: req.query.q,
+  });
+  const { rows } = await pool.query(
+    `SELECT id, text, embedding <=> $1 AS distance
+       FROM questions
+      WHERE grade = $2 AND embedding IS NOT NULL
+      ORDER BY embedding <=> $1
+      LIMIT 10`,
+    [pgvector.toSql(data[0].embedding), Number(req.query.grade)]
+  );
+  res.json(rows);
+});
+
+// 3. "More like this": no model call. The vector is already stored.
+app.get("/questions/:id/similar", async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT id, text
+       FROM questions
+      WHERE id <> $1 AND embedding IS NOT NULL
+      ORDER BY embedding <=> (SELECT embedding FROM questions WHERE id = $1)
+      LIMIT 5`,
+    [req.params.id]
+  );
+  res.json(rows);
+});
+
+app.listen(3000, () => console.log("API on :3000"));</script>
+<script type="text/plain" id="f-worker">// worker.js: changes queued question ids into stored vectors
+import pg from "pg";
+import pgvector from "pgvector/pg";
+import OpenAI from "openai";
+import { connect } from "./rabbit.js";
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+pool.on("connect", async (client) => { await pgvector.registerTypes(client); });
+const openai = new OpenAI();
+const { ch } = await connect();
+
+const MAX_ATTEMPTS = 5;
+await ch.prefetch(8);   // max. 8 messages without ack at one time
+
+await ch.consume("embed-questions", async (msg) => {
+  try {
+    const { questionId } = JSON.parse(msg.content.toString());
+
+    // Read the text now, so the worker embeds the latest version.
+    const { rows } = await pool.query(
+      "SELECT text FROM questions WHERE id = $1", [questionId]);
+    if (rows.length === 0) return ch.ack(msg);   // question deleted: done
+
+    const { data } = await openai.embeddings.create({
+      model: "text-embedding-3-small",
+      input: rows[0].text,
+    });
+
+    // Safe to do two times: same id, same text, same vector.
+    await pool.query(
+      "UPDATE questions SET embedding = $1 WHERE id = $2",
+      [pgvector.toSql(data[0].embedding), questionId]);
+
+    ch.ack(msg);   // the job is complete only now
+  } catch (err) {
+    // x-death counts how many times this message failed.
+    const attempts = msg.properties.headers?.["x-death"]
+      ?.find((d) => d.queue === "embed-questions")?.count ?? 0;
+
+    if (attempts + 1 >= MAX_ATTEMPTS) {
+      ch.sendToQueue("embed-questions.parked", msg.content, { persistent: true });
+      ch.ack(msg);
+    } else {
+      ch.nack(msg, false, false);   // no requeue: goes to the retry queue
+    }
+  }
+});
+
+console.log("Worker is ready");</script>
+
+</main>
+
+<script>
+(function(){
+const NS="http://www.w3.org/2000/svg";
+const reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const $=id=>document.getElementById(id);
+const el=(t,a,p)=>{const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;};
+const h=(t,a,p)=>{const e=document.createElement(t);for(const k in a){if(k==="text")e.textContent=a[k];else if(k==="html")e.innerHTML=a[k];else e.setAttribute(k,a[k]);}if(p)p.appendChild(e);return e;};
+const sleep=ms=>new Promise(r=>setTimeout(r,reduce?Math.min(ms,150):ms));
+function move(dot,a,b,ms){return new Promise(res=>{
+  if(reduce){dot.setAttribute("cx",b.x);dot.setAttribute("cy",b.y);return res();}
+  const t0=performance.now();
+  (function f(t){let k=Math.min(1,(t-t0)/ms);const e=k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+    dot.setAttribute("cx",a.x+(b.x-a.x)*e);dot.setAttribute("cy",a.y+(b.y-a.y)*e);k<1?requestAnimationFrame(f):res();})(t0);});}
+function chips(box,items,onPick,cls){return items.map((it,i)=>{const b=h("button",{class:"chip"+(cls?" "+cls:""),"aria-pressed":"false",text:it},box);
+  b.onclick=()=>{list.forEach((x,j)=>x.setAttribute("aria-pressed",j===i));onPick(i);};return b;});}
+let list;
+function chipGroup(box,items,onPick,cls){const bs=[];items.forEach((it,i)=>{const b=h("button",{class:"chip"+(cls?" "+cls:""),"aria-pressed":"false",text:it},box);
+  b.onclick=()=>{bs.forEach((x,j)=>x.setAttribute("aria-pressed",String(j===i)));onPick(i);};bs.push(b);});return bs;}
+function hash(s){let x=2166136261;for(let i=0;i<s.length;i++){x^=s.charCodeAt(i);x=Math.imul(x,16777619);}return x>>>0;}
+function rng(seed){return function(){seed|=0;seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+
+/* ---------- shared data: the question bank ---------- */
+const Q=[
+ {id:1,t:"Solve for x: 3x + 5 = 20",c:"eq",x:140,y:95},
+ {id:2,t:"A phone plan costs $12 plus $3 per GB. How many GB can you use for $30?",s:"A phone plan costs $12 plus $3 per GB …",c:"eq",x:215,y:150},
+ {id:3,t:"A rectangle is 3 times as long as it is wide. The perimeter is 48 m. Find the width.",s:"A rectangle is 3 times as long as …",c:"eq",x:300,y:200},
+ {id:4,t:"Solve for y: 4y − 7 = 21",c:"eq",x:110,y:140},
+ {id:5,t:"Find the area of a triangle with base 8 cm and height 5 cm",s:"Find the area of a triangle …",c:"geo",x:420,y:250},
+ {id:6,t:"Find the circumference of a circle with radius 7 cm",s:"Find the circumference of a circle …",c:"geo",x:480,y:300},
+ {id:7,t:"How many degrees are in the angles of a triangle?",s:"How many degrees are in a triangle?",c:"geo",x:400,y:320},
+ {id:8,t:"What is 3/4 of 48?",c:"fr",x:130,y:300},
+ {id:9,t:"Convert 0.375 to a fraction",c:"fr",x:90,y:340},
+ {id:10,t:"Add 2/3 and 1/6",c:"fr",x:180,y:345}
+];
+const SEARCHES=[{t:"word problems with an equation",x:235,y:135},{t:"shapes and their size",x:440,y:280}];
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+const dval=d=>(0.18+d/330).toFixed(2);
+const short=q=>q.s||q.t;
+const base={};["eq","geo","fr"].forEach(c=>{const r=rng(hash(c+"x"));base[c]=Array.from({length:32},()=>r()*2-1);});
+function vecOf(q){const r=rng(hash(q.t));return base[q.c||"eq"].map(v=>Math.max(-1,Math.min(1,v*0.85+(r()-.5)*0.45)));}
+function paint(span,v){span.style.background=v>=0?"var(--emb)":"var(--neg)";span.style.opacity=(0.15+Math.abs(v)*0.85).toFixed(2);}
+function strip(box,vals,cls){box.innerHTML="";vals.forEach(v=>{const s=h("span",{},box);paint(s,v);});}
+
+/* ---------- PROBLEM ---------- */
+let pQ=0,pMode=0;
+const pqBtns=chipGroup($("pq"),SEARCHES.map(s=>"“"+s.t+"”"),i=>{pQ=i;renderP();});
+const pmBtns=chipGroup($("pm"),["Words","Meaning"],i=>{pMode=i;renderP();});
+pqBtns[0].setAttribute("aria-pressed","true");pmBtns[0].setAttribute("aria-pressed","true");
+function esc(s){return s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));}
+function renderP(){
+  const s=SEARCHES[pQ],ul=$("plist");ul.innerHTML="";
+  const words=s.t.toLowerCase().split(/\s+/).filter(w=>w.length>2&&!["with","and","their","the"].includes(w));
+  const ranked=Q.map(q=>({q,d:dist(q,s)})).sort((a,b)=>a.d-b.d);const top=ranked.slice(0,3).map(r=>r.q.id);
+  let hits=0;
+  Q.forEach(q=>{const li=h("li",{},ul);let txt=esc(q.t);
+    if(pMode===0){let m=false;words.forEach(w=>{const re=new RegExp("\\b("+w.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+")\\b","ig");if(re.test(q.t)){m=true;txt=txt.replace(re,"<mark>$1</mark>");}});
+      if(m)hits++;else li.classList.add("dim");h("span",{html:txt},li);h("span",{},li);}
+    else{const d=dist(q,s);const isTop=top.includes(q.id);li.classList.add(isTop?"hit":"dim");h("span",{html:txt},li);
+      const tr=h("div",{class:"bartrack",title:"distance "+dval(d)},li);const b=h("div",{class:"bar"},tr);b.style.width="0";requestAnimationFrame(()=>b.style.width=Math.min(100,dval(d)*100)+"%");}});
+  $("pverdict").textContent=pMode===0?(hits?hits+" questions contain these words.":"0 questions contain these words. The teacher sees no results."):"3 questions are near in meaning. The bar shows the distance: shorter is better.";
+  $("pverdict").style.color=pMode===0&&!hits?"var(--warn)":"var(--ok)";
+}
+renderP();
+
+/* ---------- EMBEDDINGS: step 1 + 2 ---------- */
+const E=[0,1,4,7];
+const eBtns=chipGroup($("echips"),E.map(i=>short(Q[i])),i=>embed(E[i]));
+let eTimer=[];
+function embed(qi){
+  eTimer.forEach(clearTimeout);eTimer=[];
+  const q=Q[qi];$("etext").textContent="“"+q.t+"”";
+  const m=$("emodel");m.classList.remove("busy");void m.offsetWidth;m.classList.add("busy");
+  const vals=vecOf(q);const box=$("evec");box.innerHTML="";
+  const spans=vals.map(()=>{const s=h("span",{},box);s.style.background="var(--soft)";return s;});
+  spans.forEach((s,i)=>eTimer.push(setTimeout(()=>paint(s,vals[i]),reduce?0:500+i*25)));
+  $("enums").textContent="["+vals.slice(0,5).map(v=>(v*0.06).toFixed(3)).join(", ")+", … ]  1,536 numbers";
+  // compare
+  const near=Q.filter(o=>o!==q).sort((a,b)=>dist(a,q)-dist(b,q))[0];
+  const far=Q.filter(o=>o!==q).sort((a,b)=>dist(b,q)-dist(a,q))[0];
+  const box2=$("ecompare");box2.innerHTML="";
+  h("p",{class:"small",text:"Look at the color patterns. Similar meaning gives a similar pattern."},box2);
+  [[q,"Selected",null],[near,"Similar meaning",dist(near,q)],[far,"Different meaning",dist(far,q)]].forEach(([o,lab,d])=>{
+    const r=h("div",{class:"vecrow"},box2);const l=h("div",{},r);h("b",{text:lab,style:"display:block;font-size:14px"},l);h("span",{class:"small",text:short(o)},l);
+    const v=h("div",{class:"vec"},r);strip(v,vecOf(o));h("div",{class:"num",text:d==null?"":"distance "+dval(d)},r);});
+}
+eBtns[0].setAttribute("aria-pressed","true");embed(0);
+
+/* ---------- EMBEDDINGS: map ---------- */
+const map=$("map");
+const hit=el("rect",{x:0,y:0,width:600,height:400,fill:"transparent",style:"cursor:crosshair"},map);
+[["Equations",160,40],["Shapes",470,215],["Fractions",135,390]].forEach(([t,x,y])=>el("text",{x,y,"text-anchor":"middle","font-size":20,"font-weight":800,fill:"var(--line)"},map).textContent=t);
+const lines=el("g",{},map);
+const pts=Q.map(q=>{const g=el("g",{style:"cursor:pointer"},map);
+  const c=el("circle",{cx:q.x,cy:q.y,r:7,fill:"var(--muted)"},g);
+  const tx=el("text",{x:q.x+11,y:q.y+4,"font-size":12,fill:"var(--muted)"},g);tx.textContent="#"+q.id;
+  g.addEventListener("click",ev=>{ev.stopPropagation();pick(q.x,q.y,q);});return {c,tx};});
+const qd=el("circle",{r:9,fill:"var(--emb)",stroke:"var(--surface)","stroke-width":3,opacity:0},map);
+function pick(x,y,self){
+  qd.setAttribute("cx",x);qd.setAttribute("cy",y);qd.setAttribute("opacity",self?0:1);
+  const near=Q.filter(o=>o!==self).map(o=>({o,d:dist(o,{x,y})})).sort((a,b)=>a.d-b.d).slice(0,3);
+  lines.innerHTML="";pts.forEach(p=>{p.c.setAttribute("fill","var(--muted)");p.c.setAttribute("r",7);p.tx.setAttribute("fill","var(--muted)");});
+  if(self){const p=pts[self.id-1];p.c.setAttribute("fill","var(--ink)");p.c.setAttribute("r",9);p.tx.setAttribute("fill","var(--ink)");}
+  near.forEach(n=>{el("line",{x1:x,y1:y,x2:n.o.x,y2:n.o.y,stroke:"var(--emb)","stroke-width":2,"stroke-dasharray":"4 4"},lines);
+    const p=pts[n.o.id-1];p.c.setAttribute("fill","var(--emb)");p.c.setAttribute("r",9);p.tx.setAttribute("fill","var(--ink)");});
+  $("msel").textContent=self?"#"+self.id+"  "+self.t:"Your point on the map";
+  const box=$("mnear");box.innerHTML="";
+  near.forEach(n=>{const r=h("div",{style:"margin:0 0 12px"},box);h("div",{text:"#"+n.o.id+"  "+short(n.o),style:"font-size:15px"},r);
+    const tr=h("div",{class:"bartrack",style:"margin-top:4px"},r);const b=h("div",{class:"bar"},tr);b.style.width="0";requestAnimationFrame(()=>b.style.width=Math.min(100,dval(n.d)*100)+"%");
+    h("div",{class:"small mono",text:"distance "+dval(n.d)},r);});
+}
+hit.addEventListener("click",e=>{const pt=map.createSVGPoint();pt.x=e.clientX;pt.y=e.clientY;const p=pt.matrixTransform(map.getScreenCTM().inverse());pick(p.x,p.y,null);});
+pick(Q[0].x,Q[0].y,Q[0]);
+
+/* ---------- PGVECTOR table ---------- */
+const RH=44,pgt=$("pgt");pgt.style.height=(Q.length*RH)+"px";
+const rows=Q.map((q,i)=>{const r=h("div",{class:"pgrow"},pgt);r.style.top=(i*RH)+"px";
+  h("span",{class:"mono",text:q.id},r);h("span",{class:"t",text:q.t,title:q.t},r);
+  const m=h("div",{class:"mini m"},r);vecOf(q).slice(0,12).forEach(v=>{const s=h("span",{},m);paint(s,v);});
+  const dc=h("div",{},r);const tr=h("div",{class:"bartrack"},dc);const b=h("div",{class:"bar",style:"background:var(--pg);width:0"},tr);const n=h("div",{class:"small mono",text:"–"},dc);
+  return {r,q,b,n};});
+let pgBusy=false;
+const pgBtns=chipGroup($("pgq"),SEARCHES.map(s=>"Search: “"+s.t+"”").concat(["Show original order"]),async i=>{
+  if(pgBusy)return;pgBusy=true;
+  if(i===2){rows.forEach((o,k)=>{o.r.style.top=(k*RH)+"px";o.r.classList.remove("top3");o.b.style.width="0";o.n.textContent="–";});setSQL(null);pgBusy=false;return;}
+  const s=SEARCHES[i];setSQL(s.t);
+  rows.forEach(o=>{const d=dist(o.q,s);o.d=d;o.b.style.width=Math.min(100,dval(d)*100)+"%";o.n.textContent=dval(d);o.r.classList.remove("top3");});
+  await sleep(700);
+  [...rows].sort((a,b)=>a.d-b.d).forEach((o,k)=>{o.r.style.top=(k*RH)+"px";if(k<3)o.r.classList.add("top3");});
+  await sleep(700);pgBusy=false;});
+function setSQL(t){$("pgsql").innerHTML=t?"<code>SELECT id, text\nFROM questions\nORDER BY embedding &lt;=&gt; <span style=\"color:var(--emb)\">embedding of “"+esc(t)+"”</span>\nLIMIT 3;</code>":"<code>SELECT id, text, embedding\nFROM questions;</code>";}
+setSQL(null);
+
+/* ---------- PGVECTOR index ---------- */
+const idx=$("idx");
+el("text",{x:150,y:22,"text-anchor":"middle","font-size":15,"font-weight":600,fill:"var(--ink)"},idx).textContent="No index: compare every row";
+el("text",{x:490,y:22,"text-anchor":"middle","font-size":15,"font-weight":600,fill:"var(--ink)"},idx).textContent="HNSW index: follow the roads";
+const r0=rng(7),G=[];
+for(let i=0;i<10;i++)for(let j=0;j<10;j++)G.push({x:30+j*24+r0()*10,y:45+i*21+r0()*8});
+const target=G[77];
+function panel(ox){return G.map(p=>el("circle",{cx:p.x+ox,cy:p.y,r:5,fill:"var(--line)"},idx));}
+const L=panel(0),R=panel(340);
+// roads for HNSW: link each dot to 3 nearest
+const roads=el("g",{opacity:.5},idx);idx.insertBefore(roads,idx.firstChild);
+G.forEach((p,i)=>{G.map((o,j)=>({j,d:dist(p,o)})).filter(o=>o.j!==i).sort((a,b)=>a.d-b.d).slice(0,3).forEach(n=>{if(n.j>i)el("line",{x1:p.x+340,y1:p.y,x2:G[n.j].x+340,y2:G[n.j].y,stroke:"var(--line)","stroke-width":1},roads);});});
+[L,R].forEach(arr=>{arr[77].setAttribute("fill","var(--pg)");arr[77].setAttribute("r",7);});
+const cL=el("text",{x:150,y:285,"text-anchor":"middle","font-size":14,fill:"var(--muted)"},idx),cR=el("text",{x:490,y:285,"text-anchor":"middle","font-size":14,fill:"var(--muted)"},idx);
+cL.textContent="0 rows compared";cR.textContent="0 rows compared";
+// greedy path with long jumps first
+function hnswPath(){let cur=0,path=[0],checked=new Set([0]);
+  while(cur!==77){const cand=G.map((o,j)=>({j,d:dist(o,G[cur])})).filter(o=>o.j!==cur).sort((a,b)=>a.d-b.d).slice(0,path.length<2?12:4);
+    cand.forEach(c=>checked.add(c.j));const nx=cand.sort((a,b)=>dist(G[a.j],target)-dist(G[b.j],target))[0].j;
+    if(dist(G[nx],target)>=dist(G[cur],target))break;cur=nx;path.push(cur);}
+  return {path,checked:[...checked]};}
+let idxBusy=false;
+$("idxgo").onclick=async()=>{if(idxBusy)return;idxBusy=true;
+  L.forEach((c,i)=>{if(i!==77)c.setAttribute("fill","var(--line)");});R.forEach((c,i)=>{if(i!==77)c.setAttribute("fill","var(--line)");});
+  idx.querySelectorAll(".hop").forEach(n=>n.remove());
+  const {path,checked}=hnswPath();
+  const left=(async()=>{for(let i=0;i<100;i++){if(i!==77)L[i].setAttribute("fill","var(--warn)");cL.textContent=(i+1)+" rows compared";await sleep(35);}})();
+  const right=(async()=>{for(const j of checked){if(j!==77)R[j].setAttribute("fill","var(--mq)");}
+    for(let k=1;k<path.length;k++){const a=G[path[k-1]],b=G[path[k]];el("line",{class:"hop",x1:a.x+340,y1:a.y,x2:b.x+340,y2:b.y,stroke:"var(--pg)","stroke-width":3},idx);await sleep(350);}
+    cR.textContent=checked.length+" rows compared";})();
+  await Promise.all([left,right]);idxBusy=false;};
+
+/* ---------- RABBITMQ: why a queue ---------- */
+function waitRows(box){box.innerHTML="";return [1,2,3,4,5].map(i=>{const r=h("div",{class:"wait"},box);h("span",{text:"Teacher "+i},r);
+  const tr=h("div",{class:"bartrack"},r);const b=h("div",{class:"bar"},tr);const s=h("span",{class:"small",text:"–"},r);return {b,s};});}
+let wNo=waitRows($("wNo")),wYes=waitRows($("wYes"));
+function qMsgs(box,n){box.innerHTML="";for(let i=0;i<n;i++)h("span",{class:"msg",text:"✉"},box);if(!n)h("span",{class:"small",text:"empty"},box);}
+qMsgs($("wq"),0);
+let wBusy=false;
+$("waitgo").onclick=async()=>{if(wBusy)return;wBusy=true;wNo=waitRows($("wNo"));wYes=waitRows($("wYes"));
+  wYes.forEach(o=>{o.b.style.background="var(--ok)";o.b.style.width="2%";o.s.textContent="0.05 s: saved";});
+  let n=5;qMsgs($("wq"),n);
+  for(let i=0;i<5;i++){const o=wNo[i];
+    if(i===4){o.b.style.background="var(--warn)";o.b.style.width="100%";o.s.textContent="error: model limit";o.s.style.color="var(--warn)";}
+    else{o.b.style.background="var(--mq)";o.b.style.width=((i+1)*20)+"%";o.s.textContent=(i+1)+" s: saved";}
+    await sleep(600);n--;qMsgs($("wq"),n);}
+  wBusy=false;};
+
+/* ---------- RABBITMQ: exchange ---------- */
+const mq=$("mq");const QN=["embed-questions","audit-log"];
+const BIND={topic:["question.created","question.#"],direct:["question.created","question.deleted"],fanout:["(not used)","(not used)"]};
+const KEYS=["question.created","question.deleted"];let type="topic";
+const P={x:80,y:130},X={x:300,y:130},QP=[{x:580,y:65},{x:580,y:195}];
+QP.forEach(q=>el("line",{x1:X.x,y1:X.y,x2:q.x-90,y2:q.y,stroke:"var(--line)","stroke-width":2},mq));
+el("line",{x1:P.x,y1:P.y,x2:X.x,y2:X.y,stroke:"var(--line)","stroke-width":2},mq);
+function node(x,y,w,label,sub,col){const g=el("g",{},mq);const r=el("rect",{x:x-w/2,y:y-28,width:w,height:56,rx:10,fill:"var(--surface)",stroke:col,"stroke-width":2},g);
+  el("text",{x,y:sub?y-3:y+5,"text-anchor":"middle","font-size":14,"font-weight":600,fill:"var(--ink)"},g).textContent=label;
+  let s=null;if(sub){s=el("text",{x,y:y+15,"text-anchor":"middle","font-size":12,fill:"var(--muted)"},g);s.textContent=sub;}return {r,s};}
+node(P.x,P.y,130,"API","sends message","var(--ink)");
+const ex=node(X.x,X.y,140,"Exchange","questions (topic)","var(--mq)");
+const qn=QP.map((q,i)=>node(q.x,q.y,180,QN[i],"0 messages","var(--mq)"));
+el("text",{x:QP[0].x+100,y:QP[0].y+5,"font-size":12,fill:"var(--muted)"},mq).textContent="→ embed worker";
+el("text",{x:QP[1].x+100,y:QP[1].y+5,"font-size":12,fill:"var(--muted)"},mq).textContent="→ log worker";
+const bl=QP.map(q=>{const mx=(X.x+q.x-90)/2,my=(X.y+q.y)/2;el("rect",{x:mx-68,y:my-12,width:136,height:22,rx:6,fill:"var(--bg)"},mq);
+  const t=el("text",{x:mx,y:my+4,"text-anchor":"middle","font-size":12,fill:"var(--muted)",class:"mono"},mq);return t;});
+el("text",{x:(X.x+QP[0].x-90)/2,y:24,"text-anchor":"middle","font-size":12,fill:"var(--muted)"},mq).textContent="bindings";
+const drop=el("text",{x:X.x,y:X.y+52,"text-anchor":"middle","font-size":13,fill:"var(--warn)",opacity:0},mq);drop.textContent="No binding matches: message dropped";
+const cnt=[0,0];
+function topicMatch(pat,key){const p=pat.split("."),k=key.split(".");function m(i,j){if(i===p.length)return j===k.length;if(p[i]==="#"){for(let t=j;t<=k.length;t++)if(m(i+1,t))return true;return false;}if(j===k.length)return false;return(p[i]==="*"||p[i]===k[j])&&m(i+1,j+1);}return m(0,0);}
+const match=(i,key)=>type==="fanout"?true:type==="direct"?BIND.direct[i]===key:topicMatch(BIND.topic[i],key);
+function renderMQ(){ex.s.textContent="questions ("+type+")";bl.forEach((t,i)=>t.textContent=BIND[type][i]);qn.forEach((n,i)=>n.s.textContent=cnt[i]+(cnt[i]===1?" message":" messages"));}
+let mqBusy=false;
+chipGroup($("keys"),KEYS,async i=>{if(mqBusy)return;mqBusy=true;const key=KEYS[i];drop.setAttribute("opacity",0);
+  const d=el("circle",{cx:P.x,cy:P.y,r:9,fill:"var(--mq)"},mq);await move(d,P,X,500);d.remove();
+  const hits=[0,1].filter(j=>match(j,key));if(!hits.length)drop.setAttribute("opacity",1);
+  await Promise.all(hits.map(async j=>{const c=el("circle",{cx:X.x,cy:X.y,r:9,fill:"var(--mq)"},mq);await move(c,X,{x:QP[j].x-90,y:QP[j].y},600);c.remove();cnt[j]++;
+    qn[j].r.setAttribute("stroke-width",4);setTimeout(()=>qn[j].r.setAttribute("stroke-width",2),500);}));
+  renderMQ();
+  $("mqcap").textContent=hits.length?"The key “"+key+"” matches "+hits.length+(hits.length===1?" binding. RabbitMQ copies the message into ":" bindings. RabbitMQ copies the message into ")+hits.map(j=>QN[j]).join(" and ")+".":"The key “"+key+"” matches no binding. RabbitMQ drops the message.";
+  mqBusy=false;},"mono");
+const TYPECAP={topic:"Topic: the binding is a pattern. # means “zero or more words”. * means “exactly one word”.",direct:"Direct: the key must be exactly the same as the binding.",fanout:"Fanout: the exchange ignores the key. Every bound queue gets a copy."};
+const tB=chipGroup($("types"),["topic","direct","fanout"],i=>{type=["topic","direct","fanout"][i];renderMQ();$("typecap").textContent=TYPECAP[type];});
+tB[0].setAttribute("aria-pressed","true");$("typecap").textContent=TYPECAP.topic;
+renderMQ();$("mqcap").textContent="Click a key. Watch which queues get a copy of the message.";
+
+/* ---------- RABBITMQ: ack ---------- */
+let AQ,AW,AD;
+function ackReset(){AQ=[{n:42},{n:43},{n:44}];AW=null;AD=[];ackRender("Three questions wait in the queue. Give one to the worker.");}
+function ackRender(msg){
+  const z=(box,arr)=>{box.innerHTML="";if(!arr.length)h("span",{class:"small",text:"empty"},box);arr.forEach(m=>h("span",{class:"msg"+(m.u?" unacked":"")+(m.re?" re":""),text:"#"+m.n},box));};
+  z($("aq"),AQ);z($("aw"),AW?[{...AW,u:true}]:[]);z($("ad"),AD);
+  $("adel").disabled=!!AW||!AQ.length;$("aack").disabled=!AW;$("acr").disabled=!AW;$("acap").textContent=msg;}
+$("adel").onclick=()=>{AW=AQ.shift();ackRender("The worker has message #"+AW.n+". RabbitMQ keeps a copy. The dashed box means “no ack yet”.");};
+$("aack").onclick=()=>{AD.push(AW);const n=AW.n;AW=null;ackRender("The worker saved the vector and sent an ack. RabbitMQ deletes message #"+n+".");};
+$("acr").onclick=()=>{const m=AW;m.re=true;AQ.unshift(m);AW=null;ackRender("The worker stopped. There was no ack, so message #"+m.n+" goes back to the queue (↺). No job is lost.");};
+$("arst").onclick=ackReset;ackReset();
+
+/* ---------- FULL PIPELINE ---------- */
+const pipe=$("pipe");
+const N={app:{x:75,y:165,w:120,label:"API",c:"--ink"},ex:{x:235,y:165,w:110,label:"Exchange",c:"--mq"},q:{x:400,y:165,w:120,label:"Queue",c:"--mq"},
+  wk:{x:570,y:165,w:110,label:"Worker",c:"--ink"},model:{x:570,y:50,w:170,label:"Embedding model",c:"--emb"},pg:{x:790,y:165,w:170,label:"Postgres + pgvector",c:"--pg"}};
+[["app","ex"],["ex","q"],["q","wk"],["wk","model"],["wk","pg"]].forEach(([a,b])=>el("line",{x1:N[a].x,y1:N[a].y,x2:N[b].x,y2:N[b].y,stroke:"var(--line)","stroke-width":2},pipe));
+const boxes={};for(const k in N){const n=N[k];const g=el("g",{},pipe);
+  boxes[k]=el("rect",{x:n.x-n.w/2,y:n.y-22,width:n.w,height:44,rx:10,fill:"var(--surface)",stroke:`var(${n.c})`,"stroke-width":2},g);
+  el("text",{x:n.x,y:n.y+5,"text-anchor":"middle","font-size":14,"font-weight":600,fill:"var(--ink)"},g).textContent=n.label;}
+const pdot=el("circle",{cx:N.app.x,cy:N.app.y-36,r:8,fill:"var(--mq)",opacity:0},pipe);
+const ST=[
+ ["Save","A teacher clicks Save. The API writes the question to Postgres. The embedding column is empty.",["app"],'POST /questions\n{ "text": "A phone plan costs $12 plus $3 per GB ...", "grade": 7 }\n\nrow 42 saved   embedding = NULL\n201 Created { "id": 42, "status": "indexing" }'],
+ ["Send","The API sends a message to the exchange. The message holds only the question id.",["app","ex"],'exchange     questions\nrouting key  question.created\nbody         { "questionId": 42 }'],
+ ["Wait","The exchange puts the message in the queue. The message waits for a free worker.",["ex","q"],'queue embed-questions   ready: 1'],
+ ["Take","A worker takes the message. RabbitMQ keeps a copy until the ack.",["q","wk"],'queue embed-questions   ready: 0   no ack yet: 1'],
+ ["Embed","The worker sends the question text to the embedding model. The model returns 1,536 numbers.",["wk","model","wk"],'POST https://api.openai.com/v1/embeddings\n{ "model": "text-embedding-3-small", "input": "A phone plan ..." }\n\n→ [0.0213, -0.0447, 0.0089, ...]   1,536 numbers'],
+ ["Store","The worker writes the numbers to the vector column. Then it sends the ack.",["wk","pg"],"UPDATE questions SET embedding = '[0.0213, ...]' WHERE id = 42;\nack → RabbitMQ deletes the message"],
+ ["Search","A teacher searches. pgvector returns the rows with the smallest distance.",["pg"],"SELECT id, text FROM questions\nORDER BY embedding <=> (embedding of the search)\nLIMIT 3;"]
+];
+const stepBtns=ST.map((s,i)=>{const li=h("li",{},$("steps"));const b=h("button",{text:s[0]},li);b.onclick=()=>jump(i);return b;});
+const pos=k=>({x:N[k].x,y:N[k].y-36});
+function hl(i){stepBtns.forEach((b,j)=>b.classList.toggle("on",j===i));$("cap").textContent=ST[i][1];$("capdata").textContent=ST[i][3];
+  for(const k in boxes)boxes[k].setAttribute("stroke-width",2);ST[i][2].forEach(k=>boxes[k].setAttribute("stroke-width",4));}
+let running=false;
+function jump(i){if(running)return;hl(i);const p=ST[i][2],n=pos(p[p.length-1]);pdot.setAttribute("opacity",1);pdot.setAttribute("cx",n.x);pdot.setAttribute("cy",n.y);pdot.setAttribute("fill",i>=4?"var(--emb)":"var(--mq)");}
+$("play").onclick=async()=>{if(running)return;running=true;pdot.setAttribute("fill","var(--mq)");pdot.setAttribute("opacity",1);
+  let cur=pos("app");pdot.setAttribute("cx",cur.x);pdot.setAttribute("cy",cur.y);
+  for(let i=0;i<ST.length;i++){hl(i);const p=ST[i][2];
+    for(let j=1;j<p.length;j++){const nx=pos(p[j]);if(i===4&&j===2)pdot.setAttribute("fill","var(--emb)");await move(pdot,cur,nx,750);cur=nx;}
+    if(p.length===1){const nx=pos(p[0]);await move(pdot,cur,nx,300);cur=nx;}
+    await sleep(1500);}
+  running=false;};
+hl(0);
+
+const FAILS=[
+ ["The worker stops","There was no ack. RabbitMQ gives the message to a different worker. The worker writes to a known row, so two attempts do no harm."],
+ ["The model is too busy","The worker rejects the message. RabbitMQ moves it to a retry queue. After 30 seconds the message comes back, and a worker tries again."],
+ ["A message fails 5 times","The worker moves the message to a parked queue. A person can examine it. The other messages continue."],
+ ["The question was deleted","The worker finds no row. It sends an ack. RabbitMQ deletes the message."],
+ ["RabbitMQ is down","The question is saved, but no message goes out. A small job finds rows with an empty embedding and sends their messages again."],
+ ["You change the model","Embeddings from two models do not compare. Make a new embedding for every question with the new model. Then change the search to the new column."]
+];
+const fB=chipGroup($("whatifs"),FAILS.map(f=>f[0]),i=>$("whatif").textContent=FAILS[i][1]);
+fB[0].click();
+
+/* ---------- GLOSSARY ---------- */
+const GL=[
+ ["emb","Embedding","A list of numbers that shows the meaning of a text."],
+ ["emb","Embedding model","A program that changes a text into an embedding."],
+ ["emb","Vector","A list of numbers with a fixed length. An embedding is a vector."],
+ ["emb","Dimension","One position in a vector. text-embedding-3-small gives 1,536 dimensions."],
+ ["emb","Distance","A number that shows how different two vectors are. Small distance means similar meaning."],
+ ["emb","Cosine distance","A distance that compares the direction of two vectors, not their length."],
+ ["pg","Postgres","A database. It keeps data in tables with rows and columns."],
+ ["pg","Extension","An add-on that gives Postgres new functions."],
+ ["pg","pgvector","A Postgres extension. It adds the vector column type and nearest-vector search."],
+ ["pg","<=>","The pgvector operator for cosine distance."],
+ ["pg","Index (HNSW)","A structure that connects near vectors. It makes search fast, but approximate."],
+ ["mq","Message","A small packet of data that one program sends to another."],
+ ["mq","Message broker","A program that receives messages, keeps them, and gives them to other programs."],
+ ["mq","Producer","The program that sends a message. Here, the API."],
+ ["mq","Exchange","The part of RabbitMQ that receives a message and puts it into queues."],
+ ["mq","Routing key","A label on a message. The exchange uses it to select queues."],
+ ["mq","Binding","A rule that connects an exchange to a queue."],
+ ["mq","Queue","A line of messages. The first message in is the first message out."],
+ ["mq","Consumer (worker)","The program that takes messages from a queue and does the job."],
+ ["mq","Acknowledgement (ack)","A signal from the worker: “The job is complete.” RabbitMQ then deletes the message."],
+ ["mq","Retry queue","A queue that holds a failed message for a time, then sends it back."]
+];
+const gb=$("gloss");GL.forEach(([c,t,m])=>{const tr=h("tr",{},gb);const td=h("td",{},tr);const sw=h("span",{class:"tag"},td);sw.style.background=`var(--${c})`;td.appendChild(document.createTextNode(t));h("td",{text:m},tr);});
+
+/* ---------- CODE ---------- */
+const FILES=[["docker-compose.yml","f-compose","Starts RabbitMQ with its web UI, and Postgres with pgvector."],["schema.sql","f-schema","Makes the questions table and the HNSW index."],
+ ["rabbit.js","f-rabbit","Declares the exchanges and queues. The API and the worker both use it."],["api.js","f-api","Saves questions, sends messages, and answers searches."],["worker.js","f-worker","Takes messages, calls the model, writes vectors, and sends acks."]];
+const cb=document.querySelector("#codebox code");
+const cB=chipGroup($("codetabs"),FILES.map(f=>f[0]),i=>{cb.textContent=$(FILES[i][1]).textContent;$("codenote").textContent=FILES[i][2];},"mono");
+cB[0].click();
+const copy=$("copy");copy.onclick=async()=>{try{await navigator.clipboard.writeText(cb.textContent);copy.textContent="Copied";}
+  catch(e){const r=document.createRange();r.selectNodeContents(cb);const s=getSelection();s.removeAllRanges();s.addRange(r);copy.textContent="Selected: press Ctrl+C";}
+  setTimeout(()=>copy.textContent="Copy file",1800);};
+})();
+</script>
+</body>
+</html>
