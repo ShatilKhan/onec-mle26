@@ -199,13 +199,16 @@ upsert sets `active=true` (re-registration). Search filters `active=true AND emb
 query for a struck-off company returns 404. Feed check: all 8 strikes have a prior upsert and none have a
 later one, but design covers the out-of-order case.
 
-**D5 — Embedding model.** `fastembed` + `intfloat/multilingual-e5-small` (384-d, ONNX, CPU).
-Reason: ~30% of descriptions are Malay; README's `BAAI/bge-small-en-v1.5` and the locally cached
-`Snowflake/snowflake-arctic-embed-xs` (91 MB, already in HF cache) are English-only. All three are 384-d,
-so the pgvector schema is model-agnostic; only the `embedding_model` column records which produced a row.
-`hf` CLI is authenticated (`siren77`) with `hf_xet 1.8.0` enabled, so a prefetch is fast if fastembed's own
-fetch is slow. Prefix convention: `"passage: "` for stored descriptions, `"query: "` for the query company.
-Fallback if the download fails: cached arctic-embed-xs, with the Malay-quality caveat written up.
+**D5 — Embedding model.** `fastembed` + `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`
+(384-d, ONNX, CPU, 0.22 GB). Reason: ~30% of descriptions are Malay; README's `BAAI/bge-small-en-v1.5` and
+the cached `Snowflake/snowflake-arctic-embed-xs` are English-only. `intfloat/multilingual-e5-small` was the
+first choice but is **not in fastembed's supported list** — it would need `sentence-transformers` + torch
+(~GB) or a custom ONNX wrapper. MiniLM is fastembed-supported, multilingual, 384-d, trained for symmetric
+semantic similarity (our task is description ↔ description), and adds no dependency. Schema stays
+`vector(384)`; `embedding_model` records which model produced a row. No `"query: "`/`"passage: "` prefixes —
+MiniLM does not use them. `hf` CLI is authenticated (`siren77`) with `hf_xet 1.8.0` if a manual prefetch is
+needed; fastembed fetches a quantized ONNX copy from its own source. Fallback if download fails: cached
+arctic-embed-xs, with the Malay-quality caveat written up.
 
 Chunking: none. 2,432 descriptions, p50 6 words, p99 9 words; only 7 exceed 150 chars and those are the same
 phrase repeated, so truncation at the model's 512-token limit loses no information. One vector per company.
@@ -303,7 +306,7 @@ Consumer and service are separate processes so either can restart independently.
 ## Future scope (pulled forward if time runs out)
 
 - Quality deep dive: hand-label a stratified sample (industry × language), report recall@4 for
-  multilingual-e5 vs the English baselines; measure Malay/English cross-lingual pairs.
+  multilingual MiniLM vs the English baselines; measure Malay/English cross-lingual pairs.
 - Monitoring deep dive: consumer lag, drop counters, embedding latency, DB pool saturation, query p95,
   score-distribution drift.
 - LLM explanation design only (no paid API): local instruct model, retrieved neighbour as context, template
