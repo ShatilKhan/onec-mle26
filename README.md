@@ -96,27 +96,33 @@ is left as future scope because a GitHub-hosted runner cannot reach local Docker
 
 ### Findings and results
 
-Verified locally on Docker Engine 29.9.3, Postgres 16 + pgvector 0.8.7, RabbitMQ 3.13.7, Python 3.14.10:
+#### Findings from the feed
 
-- Feed is dirty by design: 5 malformed JSON, 10 unusable registration numbers, 6 `null` lines, 9 non-dict
-  `data` values; 25 distinct poison IDs → DLQ baseline 25.
-- Feed is out of order (`SYN-000155` has a 22:03 event before 15:39). Latest-wins by normalized source
-  `updatedAt` prevents regressions; replay converges because ties break by `message_id`.
-- `updatedAt` has four shapes: ISO with `+08:00`, ISO `Z`, naive ISO (assumed Malaysia `+08:00`), and int
-  epoch-ms. Missing values use a 1970 sentinel.
-- `fastembed` does not support `intfloat/multilingual-e5-small`; switched to fastembed-supported
-  `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` (384-d, multilingual). No chunking needed:
-  p99 description length is 9 words.
-- Hard industry/state filtering was rejected: median industry+state cell size is 3, and the portal mock is
-  cross-state/cross-industry. A small same-industry/state bonus is used over a top-40 candidate window.
-- Local run: API returned sensible neighbours, page 2 returned different rows, 404 for unknown registration,
-  422 for `limit + offset > 40`. `just test`: 5 passed. `just dlq-check`: depth 25 OK.
-- Local counts after one clean replay: 2,518 messages published → 2,022 companies, 2,014 active/embedded,
-  39 surrogate vectors, 8 struck-off, 2,450 processed messages, DLQ depth 25, input queue 0.
-- Query for `SYN-001550` returned `SYN-000539` first, then `SYN-000263` and `SYN-001650` — all cafés /
-  coffee shops, cross-state as in the portal mock. Reported score clamped to `1.0`.
-- Replaying the feed a second time added 0 rows, 0 processed messages, 0 DLQ messages — idempotency verified.
-- Learning references and the session transcript: [`sessions/`](sessions/sessions.md).
+| Finding | Detail | Design response |
+|---|---|---|
+| Dirty by design | 5 malformed JSON, 10 unusable registration numbers, 6 `null` lines, 9 non-dict `data` values | 25 distinct poison IDs → DLQ baseline 25 |
+| Out-of-order events | `SYN-000155` has a 22:03 event before a 15:39 event | Latest-wins by normalized source `updatedAt`; ties break by `message_id` so replay converges |
+| Mixed time formats | ISO `+08:00`, ISO `Z`, naive ISO, int epoch-ms, missing | Normalize to aware UTC; naive assumed Malaysia `+08:00`; missing → 1970 sentinel |
+| Mixed languages | ~30% Malay descriptions | Switched to fastembed-supported multilingual MiniLM (384-d) |
+| e5-small unsupported | `fastembed` has no `intfloat/multilingual-e5-small` | Use `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2` |
+| Short descriptions | p99 = 9 words; only 7 long duplicated texts | No chunking; embed one vector per company |
+| Sparse category pairs | Median industry+state cell size = 3; portal mock is cross-state / cross-industry | No hard filter; small same-industry/state bonus over top 40 |
+
+#### Local results (verified)
+
+Environment: Docker Engine 29.9.3, Postgres 16 + pgvector 0.8.7, RabbitMQ 3.13.7, Python 3.14.10.
+
+| Check | Result |
+|---|---|
+| Feed replay | 2,518 messages published; input queue drained to 0 |
+| Companies | 2,022 rows: 2,014 active and embedded, 39 surrogate vectors, 8 struck-off |
+| Idempotency | `processed_messages` 2,450; DLQ depth 25; second replay added 0 rows, 0 processed messages, 0 DLQ messages |
+| Similarity API | `SYN-001550` → `SYN-000539`, `SYN-000263`, `SYN-001650` first: cafés / coffee shops, cross-state like the portal mock |
+| Paging and errors | Page 2 returned different rows; unknown registration → 404; `limit + offset > 40` → 422 |
+| Scores | Reported cosine similarity clamped to `1.0`; bonus affects ranking only |
+| Automated checks | `just test`: 5 passed; `just dlq-check`: depth 25 OK |
+
+Learning references and the session transcript: [`sessions/`](sessions/sessions.md).
 
 ---
 
