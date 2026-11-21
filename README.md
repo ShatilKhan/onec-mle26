@@ -12,6 +12,7 @@ just publish    # replay the 2,518-line feed
 just consumer   # consume into Postgres (Ctrl+C to stop)
 just service    # API at http://127.0.0.1:8000
 just test       # unit tests
+just dlq-check  # DLQ depth vs baseline; exit 1 on spike
 ```
 
 Query: `curl 'http://127.0.0.1:8000/companies/SYN-001550/similar?limit=4&offset=0'`.

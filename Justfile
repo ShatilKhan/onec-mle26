@@ -29,3 +29,7 @@ service:
 # Run the test suite.
 test:
     uv run python -m pytest -q
+
+# Check DLQ depth against baseline; exits 1 on spike (for cron / CI).
+dlq-check:
+    uv run python -m company_rec.dlq_check
