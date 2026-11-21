@@ -84,13 +84,14 @@ async def similar(
     state = _norm(query["state"])
     ranked = []
     for row in rows:
-        score = float(row["score"])
+        raw = float(row["score"])
+        adjusted = raw
         if industry and _norm(row["industry"]) == industry:
-            score += settings.industry_bonus
+            adjusted += settings.industry_bonus
         if state and _norm(row["state"]) == state:
-            score += settings.state_bonus
-        ranked.append((score, row))
-    ranked.sort(key=lambda item: (-item[0], item[1]["registration_number"]))
+            adjusted += settings.state_bonus
+        ranked.append((adjusted, raw, row))
+    ranked.sort(key=lambda item: (-item[0], item[2]["registration_number"]))
     page = ranked[offset : offset + limit]
     results = [
         {
@@ -99,9 +100,9 @@ async def similar(
             "natureOfBusiness": row["nature_of_business"],
             "state": row["state"],
             "industry": row["industry"],
-            "score": round(score, 6),
+            "score": round(raw, 6),
         }
-        for score, row in page
+        for _, raw, row in page
     ]
     return {
         "registrationNumber": reg,

@@ -83,12 +83,9 @@ flowchart TD
 sequenceDiagram
   participant W as Portal
   participant S as Service
-  participant E as Embedder
   participant D as Postgres / pgvector
   W->>S: GET /companies/{reg}/similar?limit=4&offset=0
-  S->>D: fetch query company (404 if unknown/struck-off)
-  S->>E: embed "query: " + description
-  E-->>S: query vector
+  S->>D: fetch query company embedding (404 if unknown/struck-off)
   S->>D: ORDER BY embedding <=> $q, registration_number LIMIT 40
   D-->>S: 40 candidates + cosine scores
   S->>S: soft industry/state bonus; stable sort by score, reg
@@ -275,7 +272,9 @@ top-40 candidate window; no extra DB query per page. Total order: adjusted score
 `registration_number` asc at both SQL (`ORDER BY embedding <=> $q, registration_number LIMIT 40`) and app
 sort, so equal-score rows cannot move between pages. No cursor or snapshot — concurrent writes can shift
 results between requests; acceptable for a 4-card panel.
-Score = `1 - (embedding <=> $q)` (cosine similarity). Query `ORDER BY embedding <=> $q ASC LIMIT 40` so
+Query vector is the query company's stored embedding — MiniLM is symmetric, no re-embed or prefix on read.
+Score = `1 - (embedding <=> $q)` (cosine similarity), returned raw; the industry/state bonus affects ranking
+only, never the reported score. Query `ORDER BY embedding <=> $q ASC LIMIT 40` so
 HNSW is used; compute the friendly score in the SELECT projection only, never in `ORDER BY` (planner would
 drop the index). Query excludes self and inactive rows, filters `embedding IS NOT NULL`; `limit=4` matches the portal mock.
 
